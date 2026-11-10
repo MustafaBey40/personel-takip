@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Personel Giriş-Çıkış</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mu:#6b6b66;--ac:#c2410c;--ok:#15803d;--bd:#e5e3dc}
+@media(prefers-color-scheme:dark){:root{--bg:#161615;--card:#212120;--tx:#f2f1ec;--mu:#9a9a92;--ac:#fb923c;--ok:#4ade80;--bd:#333}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:12px;max-width:760px;margin:auto}
+h1{font-size:20px;margin:8px 0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1}
+button,input,select{font:inherit;padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);width:100%}
+button{cursor:pointer;font-weight:600}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+button.on{background:var(--tx);color:var(--bg)}
+.big{font-size:22px;padding:22px;margin-top:8px}
+.big.in{background:var(--ok);color:#fff;border-color:var(--ok)}
+.row{display:flex;gap:8px;margin-top:8px}
+.mu{color:var(--mu);font-size:14px}
+.st{font-size:18px;font-weight:700;margin:6px 0}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mu);font-weight:600}
+.err{color:#dc2626;margin-top:8px;min-height:20px}
+.x{width:auto;padding:4px 10px;font-size:13px;color:#dc2626}
+.hide{display:none}
+</style>
+</head>
+<body>
+<h1>🍽️ Personel Giriş-Çıkış</h1>
+<div class="tabs">
+  <button id="tE" class="on" onclick="tab('E')">Çalışan</button>
+  <button id="tA" onclick="tab('A')">Yönetici</button>
+</div>
+
+<!-- ÇALIŞAN -->
+<div id="E">
+  <div id="eLogin" class="card">
+    <select id="eSel"></select>
+    <input id="ePin" type="password" inputmode="numeric" placeholder="Şifreniz" style="margin-top:8px">
+    <button class="p" style="margin-top:8px" onclick="eEnter()">Devam</button>
+    <div class="err" id="eErr"></div>
+  </div>
+  <div id="eMain" class="hide">
+    <div class="card">
+      <div class="mu" id="eName"></div>
+      <div class="st" id="eState"></div>
+      <div class="mu" id="eToday"></div>
+      <button id="eBtn" class="big" onclick="clock()"></button>
+      <div class="err" id="eErr2"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin:0"><input id="eMonth" type="month" onchange="eLoad()"></div>
+      <div class="sc" style="margin-top:8px"><table id="eTbl"></table></div>
+    </div>
+    <button onclick="eOut()">Çıkış yap (cihazdan)</button>
+  </div>
+</div>
+
+<!-- YÖNETİCİ -->
+<div id="A" class="hide">
+  <div id="aLogin" class="card">
+    <input id="aPin" type="password" placeholder="Yönetici şifresi">
+    <button class="p" style="margin-top:8px" onclick="aEnter()">Giriş</button>
+    <div class="err" id="aErr"></div>
+  </div>
+  <div id="aMain" class="hide">
+    <div class="card">
+      <div class="row" style="margin:0">
+        <select id="aKind" onchange="aKindCh()"><option value="day">Günlük</option><option value="month" selected>Aylık</option><option value="year">Yıllık</option></select>
+        <input id="aVal">
+      </div>
+      <select id="aEmp" style="margin-top:8px" onchange="aRender()"></select>
+      <div class="row"><button onclick="aRender()">Listele</button><button onclick="csv()">CSV indir</button></div>
+    </div>
+    <div class="card"><div class="sc"><table id="aTbl"></table></div></div>
+    <div class="card">
+      <b>Çalışanlar</b>
+      <div id="aList"></div>
+      <div class="row"><input id="nName" placeholder="İsim"><input id="nPin" inputmode="numeric" placeholder="Şifre (4+ hane)"></div>
+      <button class="p" style="margin-top:8px" onclick="addEmp()">Çalışan ekle</button>
+    </div>
+    <div class="card">
+      <b>Unutulan kayıt ekle</b>
+      <select id="mEmp" style="margin-top:8px"></select>
+      <div class="row"><select id="mT"><option value="in">Giriş</option><option value="out">Çıkış</option></select><input id="mTs" type="datetime-local"></div>
+      <button style="margin-top:8px" onclick="addManual()">Ekle</button>
+      <div class="mu" style="margin-top:8px">Hatalı kaydı silmek için listede tek günü seçip 🗑 simgesini kullanın.</div>
+    </div>
+    <button onclick="aOut()">Yönetici çıkışı</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = (n) => String(n).padStart(2, "0");
+const dKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const mKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dur = (ms) => { const m = Math.round(ms / 60000); return `${Math.floor(m / 60)} sa ${pad(m % 60)} dk`; };
+const dayName = (k) => new Date(k + "T12:00").toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", weekday: "short" });
+const monName = (k) => new Date(k + "-01T12:00").toLocaleDateString("tr-TR", { month: "long", year: "numeric" });
+
+async function api(path, data) {
+  const r = await fetch("/api/" + path, data ? { method: "POST", body: JSON.stringify(data) } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Hata");
+  return j;
+}
+
+function sessions(ev) {
+  ev = [...ev].sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  const out = []; let cur = null;
+  for (const e of ev) {
+    if (e.t === "in") { if (cur) out.push(cur); cur = { s: new Date(e.ts), e: null, its: e.ts }; }
+    else if (cur) { cur.e = new Date(e.ts); cur.ots = e.ts; out.push(cur); cur = null; }
+  }
+  if (cur) out.push(cur);
+  return out.map((x) => ({ ...x, ms: (x.e || new Date()) - x.s, open: !x.e }));
+}
+
+function tab(t) {
+  $("E").classList.toggle("hide", t !== "E"); $("A").classList.toggle("hide", t !== "A");
+  $("tE").classList.toggle("on", t === "E"); $("tA").classList.toggle("on", t === "A");
+}
+
+/* ---------- ÇALIŞAN ---------- */
+let me = null;
+function saved() { try { return JSON.parse(localStorage.getItem("me")); } catch (e) { return null; } }
+async function initE() {
+  try {
+    const l = await api("employees");
+    $("eSel").innerHTML = l.length ? l.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("") : "<option>Henüz çalışan eklenmedi</option>";
+  } catch (e) {}
+  const s = saved();
+  if (s) { me = s; showE(); }
+  $("eMonth").value = mKey(new Date());
+}
+async function eEnter() {
+  me = { empId: $("eSel").value, pin: $("ePin").value };
+  try { await api("me", me); try { localStorage.setItem("me", JSON.stringify(me)); } catch (e) {} showE(); }
+  catch (e) { $("eErr").textContent = e.message; }
+}
+function eOut() { try { localStorage.removeItem("me"); } catch (e) {} me = null; $("eMain").classList.add("hide"); $("eLogin").classList.remove("hide"); }
+function showE() { $("eLogin").classList.add("hide"); $("eMain").classList.remove("hide"); eLoad(); }
+async function eLoad() {
+  try {
+    const r = await api("me", me);
+    $("eName").textContent = r.name;
+    const ss = sessions(r.events), last = ss[ss.length - 1], open = last && last.open;
+    $("eState").textContent = open ? `✅ İçeridesiniz (${hm(last.s)}'den beri)` : "⏸ Çıkış yapılmış";
+    $("eBtn").textContent = open ? "ÇIKIŞ YAP" : "GİRİŞ YAP";
+    $("eBtn").className = "big " + (open ? "" : "in");
+    const today = dKey(new Date());
+    const tm = ss.filter((x) => dKey(x.s) === today).reduce((a, x) => a + x.ms, 0);
+    $("eToday").textContent = "Bugün toplam: " + dur(tm);
+    const m = $("eMonth").value || mKey(new Date());
+    const by = {};
+    ss.filter((x) => mKey(x.s) === m).forEach((x) => { const k = dKey(x.s); (by[k] = by[k] || []).push(x); });
+    const keys = Object.keys(by).sort().reverse();
+    let tot = 0;
+    let h = "<tr><th>Gün</th><th>Giriş</th><th>Çıkış</th><th>Süre</th></tr>";
+    keys.forEach((k) => {
+      const a = by[k], t = a.reduce((s, x) => s + x.ms, 0); tot += t;
+      h += `<tr><td>${dayName(k)}</td><td>${hm(a[0].s)}</td><td>${a[a.length - 1].e ? hm(a[a.length - 1].e) : "—"}</td><td>${dur(t)}</td></tr>`;
+    });
+    h += `<tr><th colspan="3">Ay toplamı (${keys.length} gün)</th><th>${dur(tot)}</th></tr>`;
+    $("eTbl").innerHTML = h;
+  } catch (e) { $("eErr2").textContent = e.message; }
+}
+async function clock() {
+  $("eErr2").textContent = "";
+  try { await api("clock", me); eLoad(); } catch (e) { $("eErr2").textContent = e.message; }
+}
+
+/* ---------- YÖNETİCİ ---------- */
+let adminPin = sessionStorage.getItem("ap") || "", DATA = null, rows = [];
+function aKindCh() {
+  const k = $("aKind").value, v = $("aVal"), n = new Date();
+  if (k === "day") { v.type = "date"; v.value = dKey(n); }
+  else if (k === "month") { v.type = "month"; v.value = mKey(n); }
+  else { v.type = "number"; v.value = n.getFullYear(); }
+}
+async function aEnter() {
+  adminPin = $("aPin").value;
+  try { await aFetch(); sessionStorage.setItem("ap", adminPin); $("aLogin").classList.add("hide"); $("aMain").classList.remove("hide"); }
+  catch (e) { $("aErr").textContent = e.message; }
+}
+function aOut() { sessionStorage.removeItem("ap"); adminPin = ""; location.reload(); }
+async function aFetch() {
+  DATA = await api("admin/report", { adminPin });
+  const opts = DATA.employees.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("");
+  const cur = $("aEmp").value;
+  $("aEmp").innerHTML = `<option value="">Tüm çalışanlar</option>` + opts; $("aEmp").value = cur;
+  $("mEmp").innerHTML = opts;
+  $("aList").innerHTML = DATA.employees.map((e) => `<div class="row" style="align-items:center"><span style="flex:1">${esc(e.name)} <span class="mu">(şifre: ${esc(e.pin)})</span></span><button class="x" onclick="rmEmp('${e.id}')">Sil</button></div>`).join("") || '<div class="mu">Henüz çalışan yok</div>';
+  aRender();
+}
+function aRender() {
+  if (!DATA) return;
+  const kind = $("aKind").value, val = $("aVal").value, f = $("aEmp").value;
+  const inP = (d) => kind === "day" ? dKey(d) === val : kind === "month" ? mKey(d) === val : String(d.getFullYear()) === String(val);
+  const g = {};
+  DATA.employees.filter((e) => !f || e.id === f).forEach((e) => {
+    sessions(DATA.logs[e.id] || []).filter((x) => inP(x.s)).forEach((x) => {
+      const k = (kind === "year" ? mKey(x.s) : dKey(x.s)) + "|" + e.id;
+      (g[k] = g[k] || { key: k.split("|")[0], emp: e.name, id: e.id, list: [] }).list.push(x);
+    });
+  });
+  const keys = Object.keys(g).sort();
+  const tot = {};
+  rows = [];
+  let h = kind === "year" ? "<tr><th>Ay</th><th>Çalışan</th><th>Çalışılan gün</th><th>Toplam</th></tr>" : "<tr><th>Gün</th><th>Çalışan</th><th>Giriş</th><th>Çıkış</th><th>Süre</th><th></th></tr>";
+  keys.forEach((k) => {
+    const r = g[k], t = r.list.reduce((s, x) => s + x.ms, 0);
+    tot[r.emp] = (tot[r.emp] || 0) + t;
+    if (kind === "year") {
+      const days = new Set(r.list.map((x) => dKey(x.s))).size;
+      rows.push([monName(r.key), r.emp, days, (t / 3600000).toFixed(2)]);
+      h += `<tr><td>${monName(r.key)}</td><td>${esc(r.emp)}</td><td>${days}</td><td>${dur(t)}</td></tr>`;
+    } else {
+      const a = r.list, first = a[0], last = a[a.length - 1];
+      rows.push([r.key, r.emp, hm(first.s), last.e ? hm(last.e) : "", (t / 3600000).toFixed(2)]);
+      const del = kind === "day" ? a.map((x) => `<button class="x" onclick="delEv('${r.id}','${x.its}')">🗑 ${hm(x.s)}</button>`).join("") : "";
+      h += `<tr><td>${dayName(r.key)}</td><td>${esc(r.emp)}</td><td>${hm(first.s)}</td><td>${last.e ? hm(last.e) : "<b>açık</b>"}</td><td>${dur(t)}</td><td>${del}</td></tr>`;
+    }
+  });
+  if (!keys.length) h += `<tr><td colspan="6" class="mu">Kayıt yok</td></tr>`;
+  Object.keys(tot).forEach((n) => (h += `<tr><th colspan="${kind === "year" ? 3 : 4}">TOPLAM — ${esc(n)}</th><th colspan="2">${dur(tot[n])}</th></tr>`));
+  $("aTbl").innerHTML = h;
+}
+function csv() {
+  const head = $("aKind").value === "year" ? ["Ay", "Çalışan", "Gün", "Saat"] : ["Gün", "Çalışan", "Giriş", "Çıkış", "Saat"];
+  const t = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + t], { type: "text/csv" }));
+  a.download = "calisma-saatleri.csv"; a.click();
+}
+async function addEmp() {
+  try { await api("admin/add", { adminPin, name: $("nName").value, pin: $("nPin").value }); $("nName").value = $("nPin").value = ""; aFetch(); initEList(); }
+  catch (e) { alert(e.message); }
+}
+async function rmEmp(id) { if (confirm("Çalışan silinsin mi? (Kayıtları da görünmez olur)")) { await api("admin/remove", { adminPin, empId: id }); aFetch(); initEList(); } }
+async function delEv(id, ts) { if (confirm("Bu giriş kaydı silinsin mi?")) { await api("admin/event", { adminPin, empId: id, action: "del", ts }); aFetch(); } }
+async function addManual() {
+  if (!$("mTs").value) return alert("Tarih/saat seçin");
+  await api("admin/event", { adminPin, empId: $("mEmp").value, action: "add", t: $("mT").value, ts: new Date($("mTs").value).toISOString() });
+  aFetch();
+}
+async function initEList() { try { const l = await api("employees"); $("eSel").innerHTML = l.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join(""); } catch (e) {} }
+
+aKindCh(); initE();
+if (adminPin) aFetch().then(() => { $("aLogin").classList.add("hide"); $("aMain").classList.remove("hide"); }).catch(() => {});
+setInterval(() => { if (me && !$("eMain").classList.contains("hide")) eLoad(); }, 60000);
+</script>
+</body>
+</html>
