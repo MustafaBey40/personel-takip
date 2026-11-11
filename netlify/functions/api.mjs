@@ -5,11 +5,18 @@ export const config = { path: "/api/*" };
 const json = (d, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } });
 
+function dist(a, b, c, d) {
+  const R = 6371000, r = Math.PI / 180;
+  const x = Math.sin(((c - a) * r) / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(((d - b) * r) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 export default async (req) => {
   const route = new URL(req.url).pathname.replace(/^\/api\/?/, "");
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
   const store = getStore({ name: "pdks", consistency: "strong" });
   const emps = (await store.get("employees", { type: "json" })) || [];
+  const settings = (await store.get("settings", { type: "json" })) || null;
   const adminPin = process.env.ADMIN_PIN;
   const isAdmin = !!adminPin && String(body.adminPin) === String(adminPin);
   const findEmp = () => emps.find((e) => e.id === body.empId && e.pin === String(body.pin));
@@ -22,6 +29,15 @@ export default async (req) => {
   if (route === "clock") {
     const e = findEmp();
     if (!e) return json({ error: "Şifre hatalı" }, 401);
+    if (settings && settings.lat != null) {
+      const lat = Number(body.lat), lng = Number(body.lng);
+      if (!isFinite(lat) || !isFinite(lng))
+        return json({ error: "Konum alınamadı. Tarayıcıda konum iznini verin ve konumu açın." }, 403);
+      const d = dist(settings.lat, settings.lng, lat, lng);
+      const tol = Math.min(Number(body.acc) || 0, 100);
+      if (d > settings.radius + tol)
+        return json({ error: `Lokantadan yaklaşık ${Math.round(d)} m uzaktasınız. Giriş/çıkış sadece lokantada yapılabilir.` }, 403);
+    }
     const log = await getLog(e.id);
     const last = log.length ? log[log.length - 1] : null;
     const t = last && last.t === "in" ? "out" : "in";
@@ -44,7 +60,7 @@ export default async (req) => {
     if (route === "admin/report") {
       const logs = {};
       for (const e of emps) logs[e.id] = await getLog(e.id);
-      return json({ employees: emps, logs });
+      return json({ employees: emps, logs, settings });
     }
     if (route === "admin/add") {
       const name = String(body.name || "").trim();
@@ -52,6 +68,15 @@ export default async (req) => {
       if (!name || pin.length < 4) return json({ error: "İsim ve en az 4 haneli şifre gerekli" }, 400);
       emps.push({ id: crypto.randomUUID().slice(0, 8), name, pin });
       await store.setJSON("employees", emps);
+      return json({ ok: true });
+    }
+    if (route === "admin/setloc") {
+      if (body.clear) await store.delete("settings");
+      else {
+        const lat = Number(body.lat), lng = Number(body.lng), radius = Math.max(30, Number(body.radius) || 150);
+        if (!isFinite(lat) || !isFinite(lng)) return json({ error: "Konum alınamadı" }, 400);
+        await store.setJSON("settings", { lat, lng, radius });
+      }
       return json({ ok: true });
     }
     if (route === "admin/remove") {
