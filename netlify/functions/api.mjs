@@ -8,7 +8,7 @@ const json = (d, s = 200) =>
 export default async (req) => {
   const route = new URL(req.url).pathname.replace(/^\/api\/?/, "");
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-  const store = getStore("pdks");
+  const store = getStore({ name: "pdks", consistency: "strong" });
   const emps = (await store.get("employees", { type: "json" })) || [];
   const adminPin = process.env.ADMIN_PIN;
   const isAdmin = !!adminPin && String(body.adminPin) === String(adminPin);
