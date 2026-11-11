@@ -38,12 +38,24 @@ export default async (req) => {
       if (d > settings.radius + tol)
         return json({ error: `Lokantadan yaklaşık ${Math.round(d)} m uzaktasınız. Giriş/çıkış sadece lokantada yapılabilir.` }, 403);
     }
+    // Cihaz kontrolü: telefon ilk kullanan çalışana eşleşir, başkası kullanırsa işaretlenir
+    let flag = null;
+    const did = String(body.did || "");
+    if (did.length >= 8 && did.length <= 64) {
+      const devices = (await store.get("devices", { type: "json" })) || {};
+      if (!devices[did]) {
+        devices[did] = e.id;
+        await store.setJSON("devices", devices);
+      } else if (devices[did] !== e.id) flag = devices[did];
+    }
     const log = await getLog(e.id);
     const last = log.length ? log[log.length - 1] : null;
     const t = last && last.t === "in" ? "out" : "in";
-    log.push({ t, ts: new Date().toISOString() });
+    const ev = { t, ts: new Date().toISOString() };
+    if (flag) ev.flag = flag;
+    log.push(ev);
     await store.setJSON("log:" + e.id, log);
-    return json({ ok: true, type: t });
+    return json({ ok: true, type: t, flagged: !!flag });
   }
 
   // Çalışan: kendi kayıtları
@@ -77,6 +89,10 @@ export default async (req) => {
         if (!isFinite(lat) || !isFinite(lng)) return json({ error: "Konum alınamadı" }, 400);
         await store.setJSON("settings", { lat, lng, radius });
       }
+      return json({ ok: true });
+    }
+    if (route === "admin/resetdev") {
+      await store.delete("devices");
       return json({ ok: true });
     }
     if (route === "admin/remove") {
