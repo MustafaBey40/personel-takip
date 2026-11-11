@@ -86,6 +86,13 @@ th{color:var(--mu);font-weight:600}
       <button class="p" style="margin-top:8px" onclick="addEmp()">Çalışan ekle</button>
     </div>
     <div class="card">
+      <b>Konum kısıtı</b>
+      <div class="mu" id="locSt" style="margin:6px 0"></div>
+      <input id="locR" type="number" value="150" placeholder="Yarıçap (metre)">
+      <div class="row"><button class="p" onclick="setLoc()">Bulunduğum yeri lokanta yap</button><button onclick="clrLoc()">Kısıtı kaldır</button></div>
+      <div class="mu" style="margin-top:8px">Bu ayarı lokantadayken, yönetici telefonundan yapın.</div>
+    </div>
+    <div class="card">
       <b>Unutulan kayıt ekle</b>
       <select id="mEmp" style="margin-top:8px"></select>
       <div class="row"><select id="mT"><option value="in">Giriş</option><option value="out">Çıkış</option></select><input id="mTs" type="datetime-local"></div>
@@ -174,9 +181,22 @@ async function eLoad() {
     $("eTbl").innerHTML = h;
   } catch (e) { $("eErr2").textContent = e.message; }
 }
+function getPos() {
+  return new Promise((res) => {
+    if (!navigator.geolocation) return res({});
+    navigator.geolocation.getCurrentPosition(
+      (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+      () => res({}),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
+}
 async function clock() {
-  $("eErr2").textContent = "";
-  try { await api("clock", me); eLoad(); } catch (e) { $("eErr2").textContent = e.message; }
+  $("eErr2").textContent = "Konum kontrol ediliyor...";
+  $("eBtn").disabled = true;
+  try { const pos = await getPos(); await api("clock", { ...me, ...pos }); $("eErr2").textContent = ""; await eLoad(); }
+  catch (e) { $("eErr2").textContent = e.message; }
+  $("eBtn").disabled = false;
 }
 
 /* ---------- YÖNETİCİ ---------- */
@@ -199,6 +219,9 @@ async function aFetch() {
   const cur = $("aEmp").value;
   $("aEmp").innerHTML = `<option value="">Tüm çalışanlar</option>` + opts; $("aEmp").value = cur;
   $("mEmp").innerHTML = opts;
+  const L = DATA.settings;
+  $("locSt").textContent = L && L.lat != null ? `✅ Aktif: lokantanın ${L.radius} m çevresinde giriş/çıkış yapılabilir.` : "⚪ Kapalı: her yerden giriş/çıkış yapılabilir.";
+  if (L && L.radius) $("locR").value = L.radius;
   $("aList").innerHTML = DATA.employees.map((e) => `<div class="row" style="align-items:center"><span style="flex:1">${esc(e.name)} <span class="mu">(şifre: ${esc(e.pin)})</span></span><button class="x" onclick="rmEmp('${e.id}')">Sil</button></div>`).join("") || '<div class="mu">Henüz çalışan yok</div>';
   aRender();
 }
@@ -242,6 +265,14 @@ function csv() {
   a.href = URL.createObjectURL(new Blob(["\ufeff" + t], { type: "text/csv" }));
   a.download = "calisma-saatleri.csv"; a.click();
 }
+async function setLoc() {
+  $("locSt").textContent = "Konum alınıyor...";
+  const p = await getPos();
+  if (p.lat == null) { $("locSt").textContent = "Konum alınamadı. Konum iznini verin."; return; }
+  await api("admin/setloc", { adminPin, lat: p.lat, lng: p.lng, radius: $("locR").value });
+  aFetch();
+}
+async function clrLoc() { await api("admin/setloc", { adminPin, clear: true }); aFetch(); }
 async function addEmp() {
   try { await api("admin/add", { adminPin, name: $("nName").value, pin: $("nPin").value }); $("nName").value = $("nPin").value = ""; aFetch(); initEList(); }
   catch (e) { alert(e.message); }
