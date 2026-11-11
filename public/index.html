@@ -84,6 +84,7 @@ th{color:var(--mu);font-weight:600}
       <div id="aList"></div>
       <div class="row"><input id="nName" placeholder="İsim"><input id="nPin" inputmode="numeric" placeholder="Şifre (4+ hane)"></div>
       <button class="p" style="margin-top:8px" onclick="addEmp()">Çalışan ekle</button>
+      <button style="margin-top:8px" onclick="resetDev()">Telefon eşleşmelerini sıfırla</button>
     </div>
     <div class="card">
       <b>Konum kısıtı</b>
@@ -125,8 +126,8 @@ function sessions(ev) {
   ev = [...ev].sort((a, b) => (a.ts < b.ts ? -1 : 1));
   const out = []; let cur = null;
   for (const e of ev) {
-    if (e.t === "in") { if (cur) out.push(cur); cur = { s: new Date(e.ts), e: null, its: e.ts }; }
-    else if (cur) { cur.e = new Date(e.ts); cur.ots = e.ts; out.push(cur); cur = null; }
+    if (e.t === "in") { if (cur) out.push(cur); cur = { s: new Date(e.ts), e: null, its: e.ts, fi: e.flag }; }
+    else if (cur) { cur.e = new Date(e.ts); cur.ots = e.ts; cur.fo = e.flag; out.push(cur); cur = null; }
   }
   if (cur) out.push(cur);
   return out.map((x) => ({ ...x, ms: (x.e || new Date()) - x.s, open: !x.e }));
@@ -191,11 +192,22 @@ function getPos() {
     );
   });
 }
+function getDid() {
+  try {
+    let d = localStorage.getItem("did");
+    if (!d) { d = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem("did", d); }
+    return d;
+  } catch (e) { return ""; }
+}
 async function clock() {
   $("eErr2").textContent = "Konum kontrol ediliyor...";
   $("eBtn").disabled = true;
-  try { const pos = await getPos(); await api("clock", { ...me, ...pos }); $("eErr2").textContent = ""; await eLoad(); }
-  catch (e) { $("eErr2").textContent = e.message; }
+  try {
+    const pos = await getPos();
+    const r = await api("clock", { ...me, ...pos, did: getDid() });
+    await eLoad();
+    $("eErr2").textContent = r.flagged ? "⚠ Bu telefon başka bir çalışana ait. Bu işlem tespit edildi ve yöneticiye bildirildi." : "";
+  } catch (e) { $("eErr2").textContent = e.message; }
   $("eBtn").disabled = false;
 }
 
@@ -249,9 +261,14 @@ function aRender() {
       h += `<tr><td>${monName(r.key)}</td><td>${esc(r.emp)}</td><td>${days}</td><td>${dur(t)}</td></tr>`;
     } else {
       const a = r.list, first = a[0], last = a[a.length - 1];
-      rows.push([r.key, r.emp, hm(first.s), last.e ? hm(last.e) : "", (t / 3600000).toFixed(2)]);
+      const nm = (id) => (DATA.employees.find((x) => x.id === id) || {}).name || "başka bir çalışanın";
+      const uniq = (arr) => [...new Set(arr.filter(Boolean).map(nm))];
+      const wr = (arr) => (arr.length ? `<div style="color:#dc2626;font-size:12px;white-space:normal">⚠ ${esc(arr.join(", "))} telefonundan</div>` : "");
+      const fi = uniq(a.map((x) => x.fi)), fo = uniq(a.map((x) => x.fo));
+      const uyari = [fi.length ? "Giriş: " + fi.join(", ") + " telefonu" : "", fo.length ? "Çıkış: " + fo.join(", ") + " telefonu" : ""].filter(Boolean).join(" | ");
+      rows.push([r.key, r.emp, hm(first.s), last.e ? hm(last.e) : "", (t / 3600000).toFixed(2), uyari]);
       const del = kind === "day" ? a.map((x) => `<button class="x" onclick="delEv('${r.id}','${x.its}')">🗑 ${hm(x.s)}</button>`).join("") : "";
-      h += `<tr><td>${dayName(r.key)}</td><td>${esc(r.emp)}</td><td>${hm(first.s)}</td><td>${last.e ? hm(last.e) : "<b>açık</b>"}</td><td>${dur(t)}</td><td>${del}</td></tr>`;
+      h += `<tr><td>${dayName(r.key)}</td><td>${esc(r.emp)}</td><td>${hm(first.s)}${wr(fi)}</td><td>${last.e ? hm(last.e) : "<b>açık</b>"}${wr(fo)}</td><td>${dur(t)}</td><td>${del}</td></tr>`;
     }
   });
   if (!keys.length) h += `<tr><td colspan="6" class="mu">Kayıt yok</td></tr>`;
@@ -259,7 +276,7 @@ function aRender() {
   $("aTbl").innerHTML = h;
 }
 function csv() {
-  const head = $("aKind").value === "year" ? ["Ay", "Çalışan", "Gün", "Saat"] : ["Gün", "Çalışan", "Giriş", "Çıkış", "Saat"];
+  const head = $("aKind").value === "year" ? ["Ay", "Çalışan", "Gün", "Saat"] : ["Gün", "Çalışan", "Giriş", "Çıkış", "Saat", "Uyarı"];
   const t = [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff" + t], { type: "text/csv" }));
@@ -273,6 +290,11 @@ async function setLoc() {
   aFetch();
 }
 async function clrLoc() { await api("admin/setloc", { adminPin, clear: true }); aFetch(); }
+async function resetDev() {
+  if (confirm("Tüm telefon eşleşmeleri silinsin mi? Her telefon, onu ilk kullanan çalışana yeniden eşleşir. Eski uyarılar kalır.")) {
+    await api("admin/resetdev", { adminPin }); alert("Sıfırlandı");
+  }
+}
 async function addEmp() {
   try { await api("admin/add", { adminPin, name: $("nName").value, pin: $("nPin").value }); $("nName").value = $("nPin").value = ""; aFetch(); initEList(); }
   catch (e) { alert(e.message); }
